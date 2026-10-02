@@ -152,7 +152,7 @@ const List<ActionFlow> seedFlows = <ActionFlow>[
       FlowStep(
         id: 's1',
         kind: StepKind.setVariable,
-        variableId: 'isLoading',
+        variableId: 'var_loading',
         expression: 'true',
       ),
       FlowStep(
@@ -164,13 +164,13 @@ const List<ActionFlow> seedFlows = <ActionFlow>[
           FlowStep(
             id: 's2a',
             kind: StepKind.setVariable,
-            variableId: 'products',
+            variableId: 'var_products',
             expression: 'response.data',
           ),
           FlowStep(
             id: 's2b',
             kind: StepKind.setVariable,
-            variableId: 'isLoading',
+            variableId: 'var_loading',
             expression: 'false',
           ),
           FlowStep(
@@ -183,7 +183,7 @@ const List<ActionFlow> seedFlows = <ActionFlow>[
           FlowStep(
             id: 's2d',
             kind: StepKind.setVariable,
-            variableId: 'errorMessage',
+            variableId: 'var_error',
             expression: 'response.message',
           ),
           FlowStep(
@@ -204,7 +204,7 @@ const List<ActionFlow> seedFlows = <ActionFlow>[
       FlowStep(
         id: 'l1',
         kind: StepKind.setVariable,
-        variableId: 'isLoading',
+        variableId: 'var_loading',
         expression: 'true',
       ),
       FlowStep(
@@ -216,13 +216,13 @@ const List<ActionFlow> seedFlows = <ActionFlow>[
           FlowStep(
             id: 'l2a',
             kind: StepKind.setVariable,
-            variableId: 'authToken',
+            variableId: 'var_token',
             expression: 'response.token',
           ),
           FlowStep(
             id: 'l2b',
             kind: StepKind.setVariable,
-            variableId: 'currentUser',
+            variableId: 'var_user',
             expression: 'response.user',
           ),
           FlowStep(
@@ -235,7 +235,7 @@ const List<ActionFlow> seedFlows = <ActionFlow>[
           FlowStep(
             id: 'l2d',
             kind: StepKind.setVariable,
-            variableId: 'errorMessage',
+            variableId: 'var_error',
             expression: 'response.message',
           ),
           FlowStep(

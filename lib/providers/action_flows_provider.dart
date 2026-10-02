@@ -106,4 +106,52 @@ abstract final class FlowStepTree {
       ],
     );
   }
+
+  /// The id of the nearest enclosing `call_api` step for [targetId], which
+  /// provides the `response.*` values available to the step.
+  static String? responseApiFor(
+    FlowStep root,
+    String targetId, [
+    String? currentApi,
+  ]) {
+    if (root.id == targetId) return currentApi;
+    final api = root.kind == StepKind.callApi ? root.apiId : currentApi;
+    for (final child in root.onSuccess) {
+      final result = responseApiFor(child, targetId, api);
+      if (result != null) return result;
+    }
+    for (final child in root.onError) {
+      final result = responseApiFor(child, targetId, api);
+      if (result != null) return result;
+    }
+    return null;
+  }
+
+  /// Moves a step within the success/error branch of the step [parentId].
+  static FlowStep reorderBranch(
+    FlowStep root,
+    String parentId,
+    bool onSuccess,
+    int oldIndex,
+    int newIndex,
+  ) {
+    if (root.id == parentId) {
+      final list = onSuccess ? [...root.onSuccess] : [...root.onError];
+      final step = list.removeAt(oldIndex);
+      list.insert(newIndex, step);
+      return onSuccess
+          ? root.copyWith(onSuccess: list)
+          : root.copyWith(onError: list);
+    }
+    return root.copyWith(
+      onSuccess: [
+        for (final c in root.onSuccess)
+          reorderBranch(c, parentId, onSuccess, oldIndex, newIndex),
+      ],
+      onError: [
+        for (final c in root.onError)
+          reorderBranch(c, parentId, onSuccess, oldIndex, newIndex),
+      ],
+    );
+  }
 }

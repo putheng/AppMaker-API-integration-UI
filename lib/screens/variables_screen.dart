@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/app_variable.dart';
 import '../providers/variables_provider.dart';
 import '../theme/theme.dart';
+import '../utils/id.dart';
 import '../widgets/common/badges.dart';
 import '../widgets/common/empty_state.dart';
 import '../widgets/common/fields.dart';
@@ -28,7 +29,7 @@ class _VariablesScreenState extends ConsumerState<VariablesScreen> {
   }
 
   void _addVariable() {
-    final id = 'var_${DateTime.now().microsecondsSinceEpoch}';
+    final id = newId('var');
     final variable = AppVariable(
       id: id,
       name: 'newVariable',

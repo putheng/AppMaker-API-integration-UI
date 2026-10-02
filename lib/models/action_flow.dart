@@ -53,12 +53,16 @@ class FlowStep {
   final List<FlowStep> onError;
 
   /// Short human-readable description shown under the step title.
-  String get subtitle {
+  ///
+  /// [variableNames] maps variable ids to their names so `set_variable` steps
+  /// render `users = response.data` instead of the raw id.
+  String subtitleWith(Map<String, String> variableNames) {
     switch (kind) {
       case StepKind.callApi:
         return label.isEmpty ? 'Select an API' : label;
       case StepKind.setVariable:
-        return '$variableId  =  $expression';
+        final name = variableNames[variableId] ?? variableId ?? 'variable';
+        return '$name  =  $expression';
       case StepKind.condition:
         return expression.isEmpty ? 'if (condition)' : expression;
       case StepKind.navigate:
@@ -69,6 +73,8 @@ class FlowStep {
         return expression.isEmpty ? 'Filter / Map / Sort' : expression;
     }
   }
+
+  String get subtitle => subtitleWith(const {});
 
   FlowStep copyWith({
     String? label,

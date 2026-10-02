@@ -93,4 +93,26 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('{}'), findsWidgets);
   });
+
+  testWidgets('value picker filters variables by the target type', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const ProviderScope(child: AppMakerApp()));
+    await tester.pumpAndSettle();
+
+    // Select the "set isLoading = true" step (a Boolean target).
+    await tester.tap(find.text('Set Variable').first);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Variables · dynamic'), findsOneWidget);
+    // Boolean literals are offered.
+    expect(find.text('true'), findsWidgets);
+    // A List variable must not be offered for a Boolean target.
+    expect(find.text('products'), findsNothing);
+  });
 }

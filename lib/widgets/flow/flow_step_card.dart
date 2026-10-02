@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/action_flow.dart';
+import '../../providers/variables_provider.dart';
 import '../../theme/theme.dart';
 import '../common/panel.dart';
 import 'flow_connector.dart';
@@ -23,6 +25,9 @@ Color stepKindColor(StepKind kind) => switch (kind) {
   StepKind.transform => const Color(0xFFA78BFA),
 };
 
+typedef BranchReorderCallback =
+    void Function(FlowStep parent, bool onSuccess, int oldIndex, int newIndex);
+
 /// Recursive renderer for a single action-flow step.
 class FlowStepView extends StatelessWidget {
   const FlowStepView({
@@ -33,6 +38,8 @@ class FlowStepView extends StatelessWidget {
     required this.onDelete,
     required this.onToggle,
     required this.onAddChild,
+    required this.onReorderBranch,
+    this.dragHandle,
     this.depth = 0,
   });
 
@@ -42,6 +49,8 @@ class FlowStepView extends StatelessWidget {
   final ValueChanged<FlowStep> onDelete;
   final ValueChanged<FlowStep> onToggle;
   final void Function(FlowStep parent, bool onSuccess) onAddChild;
+  final BranchReorderCallback onReorderBranch;
+  final Widget? dragHandle;
   final int depth;
 
   @override
@@ -58,18 +67,22 @@ class FlowStepView extends StatelessWidget {
           onSelect: () => onSelect(step),
           onDelete: () => onDelete(step),
           onToggle: () => onToggle(step),
+          dragHandle: dragHandle,
         ),
         if (step.kind == StepKind.callApi) ...[
           const SizedBox(height: AppSpacing.sm),
           _BranchSection(
             label: 'On Success',
             color: AppColors.success,
+            parent: step,
+            onSuccess: true,
             steps: step.onSuccess,
             selectedStepId: selectedStepId,
             onSelect: onSelect,
             onDelete: onDelete,
             onToggle: onToggle,
             onAddChild: onAddChild,
+            onReorder: onReorderBranch,
             onAdd: () => onAddChild(step, true),
             depth: depth + 1,
           ),
@@ -77,12 +90,15 @@ class FlowStepView extends StatelessWidget {
           _BranchSection(
             label: 'On Error',
             color: AppColors.error,
+            parent: step,
+            onSuccess: false,
             steps: step.onError,
             selectedStepId: selectedStepId,
             onSelect: onSelect,
             onDelete: onDelete,
             onToggle: onToggle,
             onAddChild: onAddChild,
+            onReorder: onReorderBranch,
             onAdd: () => onAddChild(step, false),
             depth: depth + 1,
           ),
@@ -92,7 +108,7 @@ class FlowStepView extends StatelessWidget {
   }
 }
 
-class _StepCard extends StatelessWidget {
+class _StepCard extends ConsumerWidget {
   const _StepCard({
     required this.step,
     required this.color,
@@ -100,6 +116,7 @@ class _StepCard extends StatelessWidget {
     required this.onSelect,
     required this.onDelete,
     required this.onToggle,
+    this.dragHandle,
   });
 
   final FlowStep step;
@@ -108,9 +125,15 @@ class _StepCard extends StatelessWidget {
   final VoidCallback onSelect;
   final VoidCallback onDelete;
   final VoidCallback onToggle;
+  final Widget? dragHandle;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final variableNames = {
+      for (final variable in ref.watch(variablesProvider))
+        variable.id: variable.name,
+    };
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -169,7 +192,7 @@ class _StepCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      step.subtitle,
+                      step.subtitleWith(variableNames),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppTypography.code.copyWith(
@@ -181,6 +204,7 @@ class _StepCard extends StatelessWidget {
                   ],
                 ),
               ),
+              ?dragHandle,
               IconButton(
                 onPressed: onToggle,
                 tooltip: step.enabled ? 'Disable step' : 'Enable step',
@@ -211,24 +235,30 @@ class _BranchSection extends StatelessWidget {
   const _BranchSection({
     required this.label,
     required this.color,
+    required this.parent,
+    required this.onSuccess,
     required this.steps,
     required this.selectedStepId,
     required this.onSelect,
     required this.onDelete,
     required this.onToggle,
     required this.onAddChild,
+    required this.onReorder,
     required this.onAdd,
     required this.depth,
   });
 
   final String label;
   final Color color;
+  final FlowStep parent;
+  final bool onSuccess;
   final List<FlowStep> steps;
   final String? selectedStepId;
   final ValueChanged<FlowStep> onSelect;
   final ValueChanged<FlowStep> onDelete;
   final ValueChanged<FlowStep> onToggle;
   final void Function(FlowStep parent, bool onSuccess) onAddChild;
+  final BranchReorderCallback onReorder;
   final VoidCallback onAdd;
   final int depth;
 
@@ -275,23 +305,66 @@ class _BranchSection extends StatelessWidget {
               ),
             )
           else
-            for (var index = 0; index < steps.length; index++) ...[
-              if (index > 0)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: AppSpacing.xs),
-                  child: FlowConnector(height: 12, showArrow: true),
-                ),
-              FlowStepView(
-                step: steps[index],
-                selectedStepId: selectedStepId,
-                onSelect: onSelect,
-                onDelete: onDelete,
-                onToggle: onToggle,
-                onAddChild: onAddChild,
-                depth: depth + 1,
-              ),
-            ],
+            ReorderableListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: EdgeInsets.zero,
+              buildDefaultDragHandles: false,
+              itemCount: steps.length,
+              onReorderItem: (oldIndex, newIndex) =>
+                  onReorder(parent, onSuccess, oldIndex, newIndex),
+              itemBuilder: (context, index) {
+                final child = steps[index];
+                return Column(
+                  key: ValueKey(child.id),
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (index > 0)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(
+                          vertical: AppSpacing.xs,
+                        ),
+                        child: FlowConnector(height: 12, showArrow: true),
+                      ),
+                    FlowStepView(
+                      step: child,
+                      selectedStepId: selectedStepId,
+                      onSelect: onSelect,
+                      onDelete: onDelete,
+                      onToggle: onToggle,
+                      onAddChild: onAddChild,
+                      onReorderBranch: onReorder,
+                      depth: depth + 1,
+                      dragHandle: ReorderableDragStartListener(
+                        index: index,
+                        child: const FlowDragHandle(),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
         ],
+      ),
+    );
+  }
+}
+
+/// The grab handle used to reorder flow steps.
+class FlowDragHandle extends StatelessWidget {
+  const FlowDragHandle({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Drag to reorder',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+        child: Icon(
+          Icons.drag_indicator,
+          size: 16,
+          color: AppColors.textTertiary,
+        ),
       ),
     );
   }

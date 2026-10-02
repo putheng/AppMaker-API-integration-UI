@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/action_flow.dart';
+import '../models/app_variable.dart';
+import '../models/response_field.dart';
 import '../providers/action_flows_provider.dart';
 import '../providers/apis_provider.dart';
 import '../providers/runtime_provider.dart';
 import '../providers/variables_provider.dart';
 import '../theme/theme.dart';
+import '../utils/id.dart';
 import '../widgets/common/badges.dart';
 import '../widgets/common/fields.dart';
 import '../widgets/common/panel.dart';
@@ -29,7 +32,7 @@ class _ActionsScreenState extends ConsumerState<ActionsScreen> {
   }
 
   FlowStep _newStep(StepKind kind) {
-    final id = 'step_${DateTime.now().microsecondsSinceEpoch}';
+    final id = newId('step');
     final apis = ref.read(apisProvider);
     final variables = ref.read(variablesProvider);
 
@@ -114,6 +117,40 @@ class _ActionsScreenState extends ConsumerState<ActionsScreen> {
         .updateFlow(flow.copyWith(steps: updated));
   }
 
+  void _reorderTopLevel(int oldIndex, int newIndex) {
+    final flow = _flow();
+    if (flow == null) return;
+    final steps = [...flow.steps];
+    final step = steps.removeAt(oldIndex);
+    steps.insert(newIndex, step);
+    ref
+        .read(actionFlowsProvider.notifier)
+        .updateFlow(flow.copyWith(steps: steps));
+  }
+
+  void _reorderBranch(
+    FlowStep parent,
+    bool onSuccess,
+    int oldIndex,
+    int newIndex,
+  ) {
+    final flow = _flow();
+    if (flow == null) return;
+    final updated = [
+      for (final root in flow.steps)
+        FlowStepTree.reorderBranch(
+          root,
+          parent.id,
+          onSuccess,
+          oldIndex,
+          newIndex,
+        ),
+    ];
+    ref
+        .read(actionFlowsProvider.notifier)
+        .updateFlow(flow.copyWith(steps: updated));
+  }
+
   ActionFlow? _flow() {
     return ref
         .read(actionFlowsProvider)
@@ -127,9 +164,11 @@ class _ActionsScreenState extends ConsumerState<ActionsScreen> {
     final flow = flows.byId(selectedId);
 
     FlowStep? selectedStep;
+    String? responseApiId;
     if (flow != null && _selectedStepId != null) {
       for (final step in flow.steps) {
         selectedStep = FlowStepTree.find(step, _selectedStepId!);
+        responseApiId = FlowStepTree.responseApiFor(step, _selectedStepId!);
         if (selectedStep != null) break;
       }
     }
@@ -144,7 +183,7 @@ class _ActionsScreenState extends ConsumerState<ActionsScreen> {
             selectedId: selectedId,
             onSelect: _selectFlow,
             onAdd: () {
-              final id = 'flow_${DateTime.now().microsecondsSinceEpoch}';
+              final id = newId('flow');
               final newFlow = ActionFlow(
                 id: id,
                 name: 'New Flow',
@@ -169,6 +208,8 @@ class _ActionsScreenState extends ConsumerState<ActionsScreen> {
                   onToggleStep: _toggleStep,
                   onAddChild: _addChild,
                   onAddTopLevel: _addTopLevel,
+                  onReorderTopLevel: _reorderTopLevel,
+                  onReorderBranch: _reorderBranch,
                   onRun: () => ref.read(runtimeProvider.notifier).run(flow),
                 ),
         ),
@@ -180,6 +221,7 @@ class _ActionsScreenState extends ConsumerState<ActionsScreen> {
               : _Inspector(
                   flow: flow,
                   selectedStep: selectedStep,
+                  responseApiId: responseApiId,
                   onFlowChanged: (updated) => ref
                       .read(actionFlowsProvider.notifier)
                       .updateFlow(updated),
@@ -297,6 +339,8 @@ class _FlowCanvas extends StatelessWidget {
     required this.onToggleStep,
     required this.onAddChild,
     required this.onAddTopLevel,
+    required this.onReorderTopLevel,
+    required this.onReorderBranch,
     required this.onRun,
   });
 
@@ -307,6 +351,8 @@ class _FlowCanvas extends StatelessWidget {
   final ValueChanged<FlowStep> onToggleStep;
   final void Function(FlowStep parent, bool onSuccess, StepKind kind) onAddChild;
   final ValueChanged<StepKind> onAddTopLevel;
+  final void Function(int oldIndex, int newIndex) onReorderTopLevel;
+  final BranchReorderCallback onReorderBranch;
   final VoidCallback onRun;
 
   @override
@@ -371,24 +417,49 @@ class _FlowCanvas extends StatelessWidget {
                     ),
                   )
                 else
-                  for (var index = 0; index < flow.steps.length; index++) ...[
-                    if (index > 0)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: AppSpacing.xs),
-                        child: FlowConnector(height: 16, showArrow: true),
-                      ),
-                    FlowStepView(
-                      step: flow.steps[index],
-                      selectedStepId: selectedStepId,
-                      onSelect: onSelectStep,
-                      onDelete: onDeleteStep,
-                      onToggle: onToggleStep,
-                      onAddChild: (parent, onSuccess) => _pickKind(
-                        context,
-                        (kind) => onAddChild(parent, onSuccess, kind),
-                      ),
-                    ),
-                  ],
+                  ReorderableListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    padding: EdgeInsets.zero,
+                    buildDefaultDragHandles: false,
+                    itemCount: flow.steps.length,
+                    onReorderItem: onReorderTopLevel,
+                    itemBuilder: (context, index) {
+                      final step = flow.steps[index];
+                      return Column(
+                        key: ValueKey(step.id),
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (index > 0)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(
+                                vertical: AppSpacing.xs,
+                              ),
+                              child: FlowConnector(
+                                height: 16,
+                                showArrow: true,
+                              ),
+                            ),
+                          FlowStepView(
+                            step: step,
+                            selectedStepId: selectedStepId,
+                            onSelect: onSelectStep,
+                            onDelete: onDeleteStep,
+                            onToggle: onToggleStep,
+                            onAddChild: (parent, onSuccess) => _pickKind(
+                              context,
+                              (kind) => onAddChild(parent, onSuccess, kind),
+                            ),
+                            onReorderBranch: onReorderBranch,
+                            dragHandle: ReorderableDragStartListener(
+                              index: index,
+                              child: const FlowDragHandle(),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                 const SizedBox(height: AppSpacing.lg),
                 Align(
                   alignment: Alignment.centerLeft,
@@ -481,6 +552,7 @@ class _Inspector extends StatelessWidget {
   const _Inspector({
     required this.flow,
     required this.selectedStep,
+    required this.responseApiId,
     required this.onFlowChanged,
     required this.onStepChanged,
     required this.onDeleteStep,
@@ -489,6 +561,7 @@ class _Inspector extends StatelessWidget {
 
   final ActionFlow flow;
   final FlowStep? selectedStep;
+  final String? responseApiId;
   final ValueChanged<ActionFlow> onFlowChanged;
   final ValueChanged<FlowStep> onStepChanged;
   final ValueChanged<FlowStep> onDeleteStep;
@@ -533,6 +606,7 @@ class _Inspector extends StatelessWidget {
               _StepEditor(
                 key: ValueKey(selectedStep!.id),
                 step: selectedStep!,
+                responseApiId: responseApiId,
                 onChanged: onStepChanged,
                 onDelete: () => onDeleteStep(selectedStep!),
                 onClose: onClearSelection,
@@ -616,12 +690,14 @@ class _StepEditor extends ConsumerStatefulWidget {
   const _StepEditor({
     super.key,
     required this.step,
+    required this.responseApiId,
     required this.onChanged,
     required this.onDelete,
     required this.onClose,
   });
 
   final FlowStep step;
+  final String? responseApiId;
   final ValueChanged<FlowStep> onChanged;
   final VoidCallback onDelete;
   final VoidCallback onClose;
@@ -735,7 +811,7 @@ class _StepEditorState extends ConsumerState<_StepEditor> {
               const SizedBox(height: AppSpacing.md),
             AppField(
               label: step.kind == StepKind.setVariable ? 'Value' : 'Expression',
-              helper: 'Use response.* to read the API result.',
+              helper: 'Type a value or pick one below.',
               child: AppTextField(
                 controller: _expression,
                 monospace: true,
@@ -743,6 +819,17 @@ class _StepEditorState extends ConsumerState<_StepEditor> {
                 onChanged: (value) =>
                     widget.onChanged(step.copyWith(expression: value)),
               ),
+            ),
+            _ValuePicker(
+              step: step,
+              responseApiId: widget.responseApiId,
+              onInsert: (value) {
+                _expression.text = value;
+                _expression.selection = TextSelection.collapsed(
+                  offset: value.length,
+                );
+                widget.onChanged(step.copyWith(expression: value));
+              },
             ),
           ],
           const SizedBox(height: AppSpacing.md),
@@ -769,6 +856,221 @@ class _StepEditorState extends ConsumerState<_StepEditor> {
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _Token {
+  const _Token(this.text, this.color);
+
+  final String text;
+  final Color color;
+}
+
+/// Suggests the values available to a step, grouped by where they come from
+/// and filtered by the type the step expects.
+class _ValuePicker extends ConsumerWidget {
+  const _ValuePicker({
+    required this.step,
+    required this.responseApiId,
+    required this.onInsert,
+  });
+
+  final FlowStep step;
+  final String? responseApiId;
+  final ValueChanged<String> onInsert;
+
+  /// The type the step's value should have, or null when anything goes.
+  VariableType? _expectedType(List<AppVariable> variables) {
+    return switch (step.kind) {
+      StepKind.setVariable => variables.byId(step.variableId)?.type,
+      StepKind.condition => VariableType.boolean,
+      StepKind.showMessage => VariableType.string,
+      _ => null,
+    };
+  }
+
+  bool _matchesField(FieldKind kind, VariableType? expected) {
+    if (expected == null || expected == VariableType.json) return true;
+    return switch (expected) {
+      VariableType.string => kind == FieldKind.string,
+      VariableType.number => kind == FieldKind.number,
+      VariableType.boolean => kind == FieldKind.boolean,
+      VariableType.list => kind == FieldKind.list,
+      VariableType.map || VariableType.object => kind == FieldKind.object,
+      VariableType.json => true,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final variables = ref.watch(variablesProvider);
+    final api = ref.watch(apisProvider).byId(responseApiId);
+    final schema = api?.buildSchema();
+    final expected = _expectedType(variables);
+
+    final responseFields = schema == null
+        ? const <ResponseField>[]
+        : [
+            for (final field in schema.flatten())
+              if (field.path != 'response' && _matchesField(field.kind, expected))
+                field,
+          ];
+
+    final matchingVariables = [
+      for (final variable in variables)
+        if (expected == null ||
+            expected == VariableType.json ||
+            variable.type == expected)
+          variable,
+    ];
+
+    final literals = switch (expected) {
+      VariableType.boolean => const [
+        _Token('true', AppColors.success),
+        _Token('false', AppColors.error),
+      ],
+      null || VariableType.json => const [
+        _Token('true', AppColors.success),
+        _Token('false', AppColors.error),
+        _Token('null', AppColors.textTertiary),
+      ],
+      _ => const <_Token>[],
+    };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (responseFields.isNotEmpty)
+          _TokenGroup(
+            label: 'Response · dynamic${api == null ? '' : ' · ${api.name}'}',
+            tokens: [
+              for (final field in responseFields)
+                _Token(field.path, fieldKindColor(field.kind)),
+            ],
+            onInsert: onInsert,
+          )
+        else if (api == null)
+          const _PickerHint(
+            'Pick a Call API step in the On Success branch to see its response fields.',
+          )
+        else
+          _PickerHint(
+            'No ${expected == null ? '' : '${variableTypeLabel(expected)} '}response fields on ${api.name}.',
+          ),
+        if (matchingVariables.isNotEmpty)
+          _TokenGroup(
+            label: 'Variables · dynamic${expected == null ? '' : ' · ${variableTypeLabel(expected)}'}',
+            tokens: [
+              for (final variable in matchingVariables)
+                _Token(
+                  variable.name,
+                  variableDisplayColor(variable.type, variable.elementType),
+                ),
+            ],
+            onInsert: onInsert,
+          ),
+        if (literals.isNotEmpty)
+          _TokenGroup(
+            label: 'Literals · fixed',
+            tokens: literals,
+            onInsert: onInsert,
+          ),
+      ],
+    );
+  }
+}
+
+class _TokenGroup extends StatelessWidget {
+  const _TokenGroup({
+    required this.label,
+    required this.tokens,
+    this.onInsert,
+  });
+
+  final String label;
+  final List<_Token> tokens;
+  final ValueChanged<String>? onInsert;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: AppTypography.labelSmall),
+          const SizedBox(height: AppSpacing.xs),
+          Wrap(
+            spacing: AppSpacing.xs,
+            runSpacing: AppSpacing.xs,
+            children: [
+              for (final token in tokens)
+                _TokenChip(
+                  token: token,
+                  onTap: onInsert == null ? null : () => onInsert!(token.text),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PickerHint extends StatelessWidget {
+  const _PickerHint(this.message);
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.md),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.info_outline,
+            size: 14,
+            color: AppColors.textTertiary,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(message, style: AppTypography.bodySmall),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TokenChip extends StatelessWidget {
+  const _TokenChip({required this.token, this.onTap});
+
+  final _Token token;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: AppRadius.smAll,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          color: token.color.withValues(alpha: 0.12),
+          borderRadius: AppRadius.smAll,
+          border: Border.all(color: token.color.withValues(alpha: 0.35)),
+        ),
+        child: Text(
+          token.text,
+          style: AppTypography.code.copyWith(fontSize: 11, color: token.color),
+        ),
       ),
     );
   }

@@ -1,12 +1,12 @@
 import 'dart:convert';
 
+import '../utils/id.dart';
 import 'app_variable.dart';
 
 /// Kinds of values in the structured initial-value builder.
 enum ValueKind { text, number, boolean, map, list, nullValue }
 
-int _sequence = 0;
-String _newId() => 'vn_${DateTime.now().microsecondsSinceEpoch}_${_sequence++}';
+String _newId() => newId('vn');
 
 /// An immutable node in the structured initial-value tree.
 class ValueNode {

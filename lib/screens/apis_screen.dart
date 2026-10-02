@@ -9,6 +9,7 @@ import '../providers/mapping_provider.dart';
 import '../providers/navigation_provider.dart';
 import '../providers/variables_provider.dart';
 import '../theme/theme.dart';
+import '../utils/id.dart';
 import '../widgets/common/badges.dart';
 import '../widgets/common/empty_state.dart';
 import '../widgets/common/fields.dart';
@@ -17,8 +18,7 @@ import '../widgets/common/panel.dart';
 import '../widgets/response/response_tree.dart';
 import '../models/app_variable.dart';
 
-KeyValuePair _newPair() =>
-    KeyValuePair(id: 'kv_${DateTime.now().microsecondsSinceEpoch}');
+KeyValuePair _newPair() => KeyValuePair(id: newId('kv'));
 
 class ApisScreen extends ConsumerWidget {
   const ApisScreen({super.key});
@@ -40,7 +40,7 @@ class ApisScreen extends ConsumerWidget {
             onSelect: (id) => ref.read(selectedApiProvider.notifier).select(id),
             onAdd: () {
               final api = ApiDefinition(
-                id: 'api_${DateTime.now().microsecondsSinceEpoch}',
+                id: newId('api'),
                 name: 'New API',
                 method: HttpMethod.get,
                 url: 'https://api.example.com/resource',
@@ -468,7 +468,7 @@ class _ResponsePanelState extends ConsumerState<_ResponsePanel> {
 
     final type = _typeForPath(schema, path);
     final variable = AppVariable(
-      id: 'var_${DateTime.now().microsecondsSinceEpoch}',
+      id: newId('var'),
       name: variableName,
       type: type,
       elementType: type == VariableType.list

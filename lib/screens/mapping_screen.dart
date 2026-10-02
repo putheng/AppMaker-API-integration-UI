@@ -9,6 +9,7 @@ import '../providers/apis_provider.dart';
 import '../providers/mapping_provider.dart';
 import '../providers/variables_provider.dart';
 import '../theme/theme.dart';
+import '../utils/id.dart';
 import '../widgets/common/badges.dart';
 import '../widgets/common/fields.dart';
 import '../widgets/common/panel.dart';
@@ -414,7 +415,7 @@ class _MappingScreenState extends ConsumerState<MappingScreen> {
 
     ref.read(mappingsProvider.notifier).add(
           ResponseMapping(
-            id: 'map_${DateTime.now().microsecondsSinceEpoch}',
+            id: newId('map'),
             apiId: api.id,
             apiName: api.name,
             variableId: variable.id,

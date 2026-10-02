@@ -8,6 +8,7 @@ import '../providers/bindings_provider.dart';
 import '../providers/runtime_provider.dart';
 import '../providers/variables_provider.dart';
 import '../theme/theme.dart';
+import '../utils/id.dart';
 import '../widgets/common/badges.dart';
 import '../widgets/common/fields.dart';
 import '../widgets/common/panel.dart';
@@ -46,7 +47,7 @@ class _BindingsScreenState extends ConsumerState<BindingsScreen> {
             selectedId: _selectedId,
             onSelect: (id) => setState(() => _selectedId = id),
             onAdd: () {
-              final id = 'bind_${DateTime.now().microsecondsSinceEpoch}';
+              final id = newId('bind');
               final binding = WidgetBinding(
                 id: id,
                 widgetName: 'New ListView',
