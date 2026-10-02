@@ -25,31 +25,14 @@ class ApisScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final apis = ref.watch(apisProvider);
-    final selectedId = ref.watch(selectedApiProvider);
-    final selected = apis.byId(selectedId);
+    final selected = ref
+        .watch(apisProvider)
+        .byId(ref.watch(selectedApiProvider));
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(
-          width: 264,
-          child: _ApiList(
-            apis: apis,
-            selectedId: selectedId,
-            onSelect: (id) => ref.read(selectedApiProvider.notifier).select(id),
-            onAdd: () {
-              final api = ApiDefinition(
-                id: newId('api'),
-                name: 'New API',
-                method: HttpMethod.get,
-                url: 'https://api.example.com/resource',
-              );
-              ref.read(apisProvider.notifier).add(api);
-              ref.read(selectedApiProvider.notifier).select(api.id);
-            },
-          ),
-        ),
+        const SizedBox(width: 264, child: _ApiList()),
         const VerticalDivider(width: 1),
         if (selected == null)
           const Expanded(
@@ -62,19 +45,7 @@ class ApisScreen extends ConsumerWidget {
         else ...[
           Expanded(
             flex: 5,
-            child: _ApiEditor(
-              key: ValueKey(selected.id),
-              api: selected,
-              onChanged: (api) =>
-                  ref.read(apisProvider.notifier).updateApi(api),
-              onDelete: () {
-                ref.read(apisProvider.notifier).remove(selected.id);
-                final remaining = ref.read(apisProvider);
-                ref
-                    .read(selectedApiProvider.notifier)
-                    .select(remaining.isEmpty ? '' : remaining.first.id);
-              },
-            ),
+            child: _ApiEditor(key: ValueKey(selected.id), api: selected),
           ),
           const VerticalDivider(width: 1),
           SizedBox(
@@ -90,21 +61,25 @@ class ApisScreen extends ConsumerWidget {
   }
 }
 
-class _ApiList extends StatelessWidget {
-  const _ApiList({
-    required this.apis,
-    required this.selectedId,
-    required this.onSelect,
-    required this.onAdd,
-  });
-
-  final List<ApiDefinition> apis;
-  final String? selectedId;
-  final ValueChanged<String> onSelect;
-  final VoidCallback onAdd;
+class _ApiList extends ConsumerWidget {
+  const _ApiList();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final apis = ref.watch(apisProvider);
+    final selectedId = ref.watch(selectedApiProvider);
+
+    void addApi() {
+      final api = ApiDefinition(
+        id: newId('api'),
+        name: 'New API',
+        method: HttpMethod.get,
+        url: 'https://api.example.com/resource',
+      );
+      ref.read(apisProvider.notifier).add(api);
+      ref.read(selectedApiProvider.notifier).select(api.id);
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -113,7 +88,7 @@ class _ApiList extends StatelessWidget {
           child: PanelHeader(
             title: 'API definitions',
             subtitle: '${apis.length} endpoints',
-            onAdd: onAdd,
+            onAdd: addApi,
             addLabel: 'New',
           ),
         ),
@@ -134,7 +109,8 @@ class _ApiList extends StatelessWidget {
                 color: selected ? AppColors.surfaceHover : AppColors.surface,
                 borderRadius: AppRadius.mdAll,
                 child: InkWell(
-                  onTap: () => onSelect(api.id),
+                  onTap: () =>
+                      ref.read(selectedApiProvider.notifier).select(api.id),
                   borderRadius: AppRadius.mdAll,
                   child: Container(
                     padding: const EdgeInsets.all(AppSpacing.md),
@@ -183,23 +159,16 @@ class _ApiList extends StatelessWidget {
   }
 }
 
-class _ApiEditor extends StatefulWidget {
-  const _ApiEditor({
-    super.key,
-    required this.api,
-    required this.onChanged,
-    required this.onDelete,
-  });
+class _ApiEditor extends ConsumerStatefulWidget {
+  const _ApiEditor({super.key, required this.api});
 
   final ApiDefinition api;
-  final ValueChanged<ApiDefinition> onChanged;
-  final VoidCallback onDelete;
 
   @override
-  State<_ApiEditor> createState() => _ApiEditorState();
+  ConsumerState<_ApiEditor> createState() => _ApiEditorState();
 }
 
-class _ApiEditorState extends State<_ApiEditor> {
+class _ApiEditorState extends ConsumerState<_ApiEditor> {
   late final TextEditingController _name;
   late final TextEditingController _url;
   late final TextEditingController _body;
@@ -222,7 +191,16 @@ class _ApiEditorState extends State<_ApiEditor> {
 
   ApiDefinition get _api => widget.api;
 
-  void _push(ApiDefinition api) => widget.onChanged(api);
+  void _push(ApiDefinition api) =>
+      ref.read(apisProvider.notifier).updateApi(api);
+
+  void _delete() {
+    ref.read(apisProvider.notifier).remove(widget.api.id);
+    final remaining = ref.read(apisProvider);
+    ref
+        .read(selectedApiProvider.notifier)
+        .select(remaining.isEmpty ? null : remaining.first.id);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -247,7 +225,7 @@ class _ApiEditorState extends State<_ApiEditor> {
               ),
               const SizedBox(width: AppSpacing.md),
               IconButton(
-                onPressed: widget.onDelete,
+                onPressed: _delete,
                 tooltip: 'Delete API',
                 icon: const Icon(Icons.delete_outline, size: 18),
                 color: AppColors.error,

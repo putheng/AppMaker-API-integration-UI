@@ -13,74 +13,37 @@ import '../widgets/common/badges.dart';
 import '../widgets/common/fields.dart';
 import '../widgets/common/panel.dart';
 
-class BindingsScreen extends ConsumerStatefulWidget {
+class BindingsScreen extends ConsumerWidget {
   const BindingsScreen({super.key});
 
   @override
-  ConsumerState<BindingsScreen> createState() => _BindingsScreenState();
-}
-
-class _BindingsScreenState extends ConsumerState<BindingsScreen> {
-  String? _selectedId;
-
-  @override
-  void initState() {
-    super.initState();
-    final bindings = ref.read(bindingsProvider);
-    _selectedId = bindings.isEmpty ? null : bindings.first.id;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bindings = ref.watch(bindingsProvider);
-    final variables = ref.watch(variablesProvider);
-    final selected = _lookup(bindings, _selectedId);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selectedId = ref.watch(selectedBindingIdProvider);
+    final resolved = ref.watch(resolvedBindingsProvider);
+    ResolvedBinding? selected;
+    for (final item in resolved) {
+      if (item.binding.id == selectedId) {
+        selected = item;
+        break;
+      }
+    }
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(
-          width: 240,
-          child: _BindingList(
-            bindings: bindings,
-            variables: variables,
-            selectedId: _selectedId,
-            onSelect: (id) => setState(() => _selectedId = id),
-            onAdd: () {
-              final id = newId('bind');
-              final binding = WidgetBinding(
-                id: id,
-                widgetName: 'New ListView',
-                kind: WidgetKind.listView,
-                fields: const [
-                  BindingField(label: 'Item label', expression: 'item.name'),
-                ],
-              );
-              ref.read(bindingsProvider.notifier).add(binding);
-              setState(() => _selectedId = id);
-            },
-          ),
-        ),
+        const SizedBox(width: 240, child: _BindingList()),
         const VerticalDivider(width: 1),
         Expanded(
           child: selected == null
               ? Center(
-                  child: Text('Select a binding', style: AppTypography.bodyMedium),
+                  child: Text(
+                    'Select a binding',
+                    style: AppTypography.bodyMedium,
+                  ),
                 )
               : _BindingEditor(
                   key: ValueKey(selected.binding.id),
                   binding: selected.binding,
-                  onChanged: (binding) =>
-                      ref.read(bindingsProvider.notifier).updateBinding(binding),
-                  onDelete: () {
-                    ref
-                        .read(bindingsProvider.notifier)
-                        .remove(selected.binding.id);
-                    final remaining = ref.read(bindingsProvider);
-                    setState(() {
-                      _selectedId = remaining.isEmpty ? null : remaining.first.id;
-                    });
-                  },
                 ),
         ),
         const VerticalDivider(width: 1),
@@ -88,34 +51,32 @@ class _BindingsScreenState extends ConsumerState<BindingsScreen> {
       ],
     );
   }
-
-  ResolvedBinding? _lookup(List<WidgetBinding> bindings, String? id) {
-    if (id == null) return null;
-    final resolved = ref.watch(resolvedBindingsProvider);
-    for (final item in resolved) {
-      if (item.binding.id == id) return item;
-    }
-    return null;
-  }
 }
 
-class _BindingList extends StatelessWidget {
-  const _BindingList({
-    required this.bindings,
-    required this.variables,
-    required this.selectedId,
-    required this.onSelect,
-    required this.onAdd,
-  });
-
-  final List<WidgetBinding> bindings;
-  final List<dynamic> variables;
-  final String? selectedId;
-  final ValueChanged<String> onSelect;
-  final VoidCallback onAdd;
+class _BindingList extends ConsumerWidget {
+  const _BindingList();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bindings = ref.watch(bindingsProvider);
+    final variables = ref.watch(variablesProvider);
+    final selectedId = ref.watch(selectedBindingIdProvider);
+
+    void addBinding() {
+      final id = newId('bind');
+      ref.read(bindingsProvider.notifier).add(
+            WidgetBinding(
+              id: id,
+              widgetName: 'New ListView',
+              kind: WidgetKind.listView,
+              fields: const [
+                BindingField(label: 'Item label', expression: 'item.name'),
+              ],
+            ),
+          );
+      ref.read(selectedBindingIdProvider.notifier).select(id);
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -124,7 +85,7 @@ class _BindingList extends StatelessWidget {
           child: PanelHeader(
             title: 'Bindings',
             subtitle: '${bindings.length} widgets',
-            onAdd: onAdd,
+            onAdd: addBinding,
             addLabel: 'New',
           ),
         ),
@@ -145,7 +106,9 @@ class _BindingList extends StatelessWidget {
                 color: selected ? AppColors.surfaceHover : AppColors.surface,
                 borderRadius: AppRadius.mdAll,
                 child: InkWell(
-                  onTap: () => onSelect(binding.id),
+                  onTap: () => ref
+                      .read(selectedBindingIdProvider.notifier)
+                      .select(binding.id),
                   borderRadius: AppRadius.mdAll,
                   child: Container(
                     padding: const EdgeInsets.all(AppSpacing.md),
@@ -210,16 +173,9 @@ IconData _widgetIcon(WidgetKind kind) => switch (kind) {
 };
 
 class _BindingEditor extends ConsumerStatefulWidget {
-  const _BindingEditor({
-    super.key,
-    required this.binding,
-    required this.onChanged,
-    required this.onDelete,
-  });
+  const _BindingEditor({super.key, required this.binding});
 
   final WidgetBinding binding;
-  final ValueChanged<WidgetBinding> onChanged;
-  final VoidCallback onDelete;
 
   @override
   ConsumerState<_BindingEditor> createState() => _BindingEditorState();
@@ -228,6 +184,17 @@ class _BindingEditor extends ConsumerStatefulWidget {
 class _BindingEditorState extends ConsumerState<_BindingEditor> {
   late final TextEditingController _name;
   final Map<int, TextEditingController> _fieldControllers = {};
+
+  void _push(WidgetBinding binding) =>
+      ref.read(bindingsProvider.notifier).updateBinding(binding);
+
+  void _delete() {
+    ref.read(bindingsProvider.notifier).remove(widget.binding.id);
+    final remaining = ref.read(bindingsProvider);
+    ref
+        .read(selectedBindingIdProvider.notifier)
+        .select(remaining.isEmpty ? null : remaining.first.id);
+  }
 
   @override
   void initState() {
@@ -269,7 +236,7 @@ class _BindingEditorState extends ConsumerState<_BindingEditor> {
                 ),
               ),
               TextButton.icon(
-                onPressed: widget.onDelete,
+                onPressed: _delete,
                 icon: const Icon(Icons.delete_outline, size: 16),
                 label: const Text('Delete'),
                 style: TextButton.styleFrom(foregroundColor: AppColors.error),
@@ -290,7 +257,7 @@ class _BindingEditorState extends ConsumerState<_BindingEditor> {
                         label: 'Widget name',
                         child: AppTextField(
                           controller: _name,
-                          onChanged: (value) => widget.onChanged(
+                          onChanged: (value) => _push(
                             WidgetBinding(
                               id: binding.id,
                               widgetName: value,
@@ -319,7 +286,7 @@ class _BindingEditorState extends ConsumerState<_BindingEditor> {
                           ],
                           onChanged: (kind) {
                             if (kind == null) return;
-                            widget.onChanged(
+                            _push(
                               WidgetBinding(
                                 id: binding.id,
                                 widgetName: binding.widgetName,
@@ -359,7 +326,7 @@ class _BindingEditorState extends ConsumerState<_BindingEditor> {
                           ),
                         ),
                     ],
-                    onChanged: (id) => widget.onChanged(
+                    onChanged: (id) => _push(
                       WidgetBinding(
                         id: binding.id,
                         widgetName: binding.widgetName,
@@ -390,7 +357,7 @@ class _BindingEditorState extends ConsumerState<_BindingEditor> {
                         child: AppTextField(
                           controller: _fieldControllers[i]!,
                           monospace: true,
-                          onChanged: (value) => widget.onChanged(
+                          onChanged: (value) => _push(
                             WidgetBinding(
                               id: binding.id,
                               widgetName: binding.widgetName,
@@ -415,7 +382,7 @@ class _BindingEditorState extends ConsumerState<_BindingEditor> {
                       ),
                     ),
                     IconButton(
-                      onPressed: () => widget.onChanged(
+                      onPressed: () => _push(
                         WidgetBinding(
                           id: binding.id,
                           widgetName: binding.widgetName,
@@ -445,7 +412,7 @@ class _BindingEditorState extends ConsumerState<_BindingEditor> {
                     text: '${binding.itemLabel}.value',
                   );
                 });
-                widget.onChanged(
+                _push(
                   WidgetBinding(
                     id: binding.id,
                     widgetName: binding.widgetName,
@@ -489,7 +456,7 @@ class _PreviewPanel extends ConsumerWidget {
           children: [
             const SectionLabel('Live preview'),
             const SizedBox(height: AppSpacing.md),
-            Center(child: _PhonePreview(runtime: runtime, flows: flows)),
+            const Center(child: _PhonePreview()),
             const SizedBox(height: AppSpacing.lg),
             Row(
               children: [
@@ -618,13 +585,12 @@ class _PreviewPanel extends ConsumerWidget {
 }
 
 class _PhonePreview extends ConsumerWidget {
-  const _PhonePreview({required this.runtime, required this.flows});
-
-  final RuntimeState runtime;
-  final List<ActionFlow> flows;
+  const _PhonePreview();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final runtime = ref.watch(runtimeProvider);
+    final flows = ref.watch(actionFlowsProvider);
     final loading = runtime.values['isLoading'] == true;
     final error = runtime.values['errorMessage'];
     final products = runtime.values['products'];
@@ -710,7 +676,7 @@ class _PhonePreview extends ConsumerWidget {
                       ? null
                       : () => ref
                             .read(runtimeProvider.notifier)
-                            .run(_flowByName('Load Products')),
+                            .run(_flowByName(flows, 'Load Products')),
                   child: const Text('Load'),
                 ),
               ),
@@ -721,7 +687,7 @@ class _PhonePreview extends ConsumerWidget {
                       ? null
                       : () => ref
                             .read(runtimeProvider.notifier)
-                            .run(_flowByName('Login')),
+                            .run(_flowByName(flows, 'Login')),
                   child: const Text('Login'),
                 ),
               ),
@@ -732,7 +698,7 @@ class _PhonePreview extends ConsumerWidget {
     );
   }
 
-  ActionFlow _flowByName(String name) {
+  ActionFlow _flowByName(List<ActionFlow> flows, String name) {
     for (final flow in flows) {
       if (flow.name == name) return flow;
     }

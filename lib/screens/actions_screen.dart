@@ -26,11 +26,6 @@ class ActionsScreen extends ConsumerStatefulWidget {
 class _ActionsScreenState extends ConsumerState<ActionsScreen> {
   String? _selectedStepId;
 
-  void _selectFlow(String id) {
-    ref.read(selectedFlowProvider.notifier).select(id);
-    setState(() => _selectedStepId = null);
-  }
-
   FlowStep _newStep(StepKind kind) {
     final id = newId('step');
     final apis = ref.read(apisProvider);
@@ -159,6 +154,12 @@ class _ActionsScreenState extends ConsumerState<ActionsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(selectedFlowProvider, (previous, next) {
+      if (previous != next && mounted) {
+        setState(() => _selectedStepId = null);
+      }
+    });
+
     final flows = ref.watch(actionFlowsProvider);
     final selectedId = ref.watch(selectedFlowProvider);
     final flow = flows.byId(selectedId);
@@ -179,9 +180,6 @@ class _ActionsScreenState extends ConsumerState<ActionsScreen> {
         SizedBox(
           width: 236,
           child: _FlowList(
-            flows: flows,
-            selectedId: selectedId,
-            onSelect: _selectFlow,
             onAdd: () {
               final id = newId('flow');
               final newFlow = ActionFlow(
@@ -191,7 +189,7 @@ class _ActionsScreenState extends ConsumerState<ActionsScreen> {
                 steps: const [],
               );
               ref.read(actionFlowsProvider.notifier).add(newFlow);
-              _selectFlow(id);
+              ref.read(selectedFlowProvider.notifier).select(id);
             },
           ),
         ),
@@ -222,18 +220,6 @@ class _ActionsScreenState extends ConsumerState<ActionsScreen> {
                   flow: flow,
                   selectedStep: selectedStep,
                   responseApiId: responseApiId,
-                  onFlowChanged: (updated) => ref
-                      .read(actionFlowsProvider.notifier)
-                      .updateFlow(updated),
-                  onStepChanged: (step) {
-                    final updated = [
-                      for (final root in flow.steps)
-                        FlowStepTree.replace(root, step),
-                    ];
-                    ref
-                        .read(actionFlowsProvider.notifier)
-                        .updateFlow(flow.copyWith(steps: updated));
-                  },
                   onDeleteStep: _deleteStep,
                   onClearSelection: () =>
                       setState(() => _selectedStepId = null),
@@ -244,21 +230,15 @@ class _ActionsScreenState extends ConsumerState<ActionsScreen> {
   }
 }
 
-class _FlowList extends StatelessWidget {
-  const _FlowList({
-    required this.flows,
-    required this.selectedId,
-    required this.onSelect,
-    required this.onAdd,
-  });
+class _FlowList extends ConsumerWidget {
+  const _FlowList({required this.onAdd});
 
-  final List<ActionFlow> flows;
-  final String? selectedId;
-  final ValueChanged<String> onSelect;
   final VoidCallback onAdd;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final flows = ref.watch(actionFlowsProvider);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -283,49 +263,68 @@ class _FlowList extends StatelessWidget {
             separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
             itemBuilder: (context, index) {
               final flow = flows[index];
-              final selected = flow.id == selectedId;
-              return Material(
-                color: selected ? AppColors.surfaceHover : AppColors.surface,
-                borderRadius: AppRadius.mdAll,
-                child: InkWell(
-                  onTap: () => onSelect(flow.id),
-                  borderRadius: AppRadius.mdAll,
-                  child: Container(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    decoration: BoxDecoration(
-                      borderRadius: AppRadius.mdAll,
-                      border: Border.all(
-                        color: selected ? AppColors.primary : AppColors.border,
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(flow.name, style: AppTypography.titleSmall),
-                        const SizedBox(height: AppSpacing.sm),
-                        Row(
-                          children: [
-                            TagChip(
-                              label: flow.trigger.label,
-                              color: AppColors.primary,
-                              dense: true,
-                            ),
-                            const SizedBox(width: AppSpacing.sm),
-                            Text(
-                              '${flow.steps.length} steps',
-                              style: AppTypography.bodySmall,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+              return ProviderScope(
+                key: ValueKey(flow.id),
+                overrides: [currentFlowProvider.overrideWithValue(flow)],
+                child: const FlowTile(),
               );
             },
           ),
         ),
       ],
+    );
+  }
+}
+
+/// A single action-flow row. Reads its flow from the overridden
+/// [currentFlowProvider] and its selection from [selectedFlowProvider].
+class FlowTile extends ConsumerWidget {
+  const FlowTile({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final flow = ref.watch(currentFlowProvider);
+    final selected = ref.watch(
+      selectedFlowProvider.select((id) => id == flow.id),
+    );
+
+    return Material(
+      color: selected ? AppColors.surfaceHover : AppColors.surface,
+      borderRadius: AppRadius.mdAll,
+      child: InkWell(
+        onTap: () => ref.read(selectedFlowProvider.notifier).select(flow.id),
+        borderRadius: AppRadius.mdAll,
+        child: Container(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            borderRadius: AppRadius.mdAll,
+            border: Border.all(
+              color: selected ? AppColors.primary : AppColors.border,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(flow.name, style: AppTypography.titleSmall),
+              const SizedBox(height: AppSpacing.sm),
+              Row(
+                children: [
+                  TagChip(
+                    label: flow.trigger.label,
+                    color: AppColors.primary,
+                    dense: true,
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text(
+                    '${flow.steps.length} steps',
+                    style: AppTypography.bodySmall,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -553,8 +552,6 @@ class _Inspector extends StatelessWidget {
     required this.flow,
     required this.selectedStep,
     required this.responseApiId,
-    required this.onFlowChanged,
-    required this.onStepChanged,
     required this.onDeleteStep,
     required this.onClearSelection,
   });
@@ -562,8 +559,6 @@ class _Inspector extends StatelessWidget {
   final ActionFlow flow;
   final FlowStep? selectedStep;
   final String? responseApiId;
-  final ValueChanged<ActionFlow> onFlowChanged;
-  final ValueChanged<FlowStep> onStepChanged;
   final ValueChanged<FlowStep> onDeleteStep;
   final VoidCallback onClearSelection;
 
@@ -576,11 +571,7 @@ class _Inspector extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _FlowSettings(
-              key: ValueKey(flow.id),
-              flow: flow,
-              onChanged: onFlowChanged,
-            ),
+            _FlowSettings(key: ValueKey(flow.id), flow: flow),
             const SizedBox(height: AppSpacing.xl),
             if (selectedStep == null)
               AppPanel(
@@ -607,7 +598,6 @@ class _Inspector extends StatelessWidget {
                 key: ValueKey(selectedStep!.id),
                 step: selectedStep!,
                 responseApiId: responseApiId,
-                onChanged: onStepChanged,
                 onDelete: () => onDeleteStep(selectedStep!),
                 onClose: onClearSelection,
               ),
@@ -618,17 +608,16 @@ class _Inspector extends StatelessWidget {
   }
 }
 
-class _FlowSettings extends StatefulWidget {
-  const _FlowSettings({super.key, required this.flow, required this.onChanged});
+class _FlowSettings extends ConsumerStatefulWidget {
+  const _FlowSettings({super.key, required this.flow});
 
   final ActionFlow flow;
-  final ValueChanged<ActionFlow> onChanged;
 
   @override
-  State<_FlowSettings> createState() => _FlowSettingsState();
+  ConsumerState<_FlowSettings> createState() => _FlowSettingsState();
 }
 
-class _FlowSettingsState extends State<_FlowSettings> {
+class _FlowSettingsState extends ConsumerState<_FlowSettings> {
   late final TextEditingController _name;
 
   @override
@@ -643,6 +632,9 @@ class _FlowSettingsState extends State<_FlowSettings> {
     super.dispose();
   }
 
+  void _push(ActionFlow flow) =>
+      ref.read(actionFlowsProvider.notifier).updateFlow(flow);
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -655,7 +647,7 @@ class _FlowSettingsState extends State<_FlowSettings> {
           child: AppTextField(
             controller: _name,
             onChanged: (value) =>
-                widget.onChanged(widget.flow.copyWith(name: value)),
+                _push(widget.flow.copyWith(name: value)),
           ),
         ),
         const SizedBox(height: AppSpacing.md),
@@ -669,7 +661,7 @@ class _FlowSettingsState extends State<_FlowSettings> {
             ],
             onChanged: (trigger) {
               if (trigger == null) return;
-              widget.onChanged(
+              _push(
                 ActionFlow(
                   id: widget.flow.id,
                   name: widget.flow.name,
@@ -691,14 +683,12 @@ class _StepEditor extends ConsumerStatefulWidget {
     super.key,
     required this.step,
     required this.responseApiId,
-    required this.onChanged,
     required this.onDelete,
     required this.onClose,
   });
 
   final FlowStep step;
   final String? responseApiId;
-  final ValueChanged<FlowStep> onChanged;
   final VoidCallback onDelete;
   final VoidCallback onClose;
 
@@ -717,6 +707,20 @@ class _StepEditorState extends ConsumerState<_StepEditor> {
     _expression = TextEditingController(text: widget.step.expression);
     _target = TextEditingController(text: widget.step.target);
     _label = TextEditingController(text: widget.step.label);
+  }
+
+  /// Persists an edited step straight to the provider, replacing it in the
+  /// currently selected flow.
+  void _updateStep(FlowStep updated) {
+    final flows = ref.read(actionFlowsProvider);
+    final flow = flows.byId(ref.read(selectedFlowProvider));
+    if (flow == null) return;
+    final steps = [
+      for (final root in flow.steps) FlowStepTree.replace(root, updated),
+    ];
+    ref
+        .read(actionFlowsProvider.notifier)
+        .updateFlow(flow.copyWith(steps: steps));
   }
 
   @override
@@ -768,7 +772,7 @@ class _StepEditorState extends ConsumerState<_StepEditor> {
                 onChanged: (id) {
                   final api = apis.byId(id);
                   if (api == null) return;
-                  widget.onChanged(step.copyWith(apiId: api.id, label: api.name));
+                  _updateStep(step.copyWith(apiId: api.id, label: api.name));
                 },
               ),
             ),
@@ -790,7 +794,7 @@ class _StepEditorState extends ConsumerState<_StepEditor> {
                 ],
                 onChanged: (id) {
                   if (id == null) return;
-                  widget.onChanged(step.copyWith(variableId: id));
+                  _updateStep(step.copyWith(variableId: id));
                 },
               ),
             ),
@@ -800,7 +804,7 @@ class _StepEditorState extends ConsumerState<_StepEditor> {
               child: AppTextField(
                 controller: _target,
                 hintText: 'Home',
-                onChanged: (value) => widget.onChanged(step.copyWith(target: value)),
+                onChanged: (value) => _updateStep(step.copyWith(target: value)),
               ),
             ),
           if (step.kind == StepKind.setVariable ||
@@ -817,7 +821,7 @@ class _StepEditorState extends ConsumerState<_StepEditor> {
                 monospace: true,
                 hintText: 'response.data',
                 onChanged: (value) =>
-                    widget.onChanged(step.copyWith(expression: value)),
+                    _updateStep(step.copyWith(expression: value)),
               ),
             ),
             _ValuePicker(
@@ -828,7 +832,7 @@ class _StepEditorState extends ConsumerState<_StepEditor> {
                 _expression.selection = TextSelection.collapsed(
                   offset: value.length,
                 );
-                widget.onChanged(step.copyWith(expression: value));
+                _updateStep(step.copyWith(expression: value));
               },
             ),
           ],
@@ -844,7 +848,7 @@ class _StepEditorState extends ConsumerState<_StepEditor> {
               Switch(
                 value: step.enabled,
                 onChanged: (value) =>
-                    widget.onChanged(step.copyWith(enabled: value)),
+                    _updateStep(step.copyWith(enabled: value)),
               ),
             ],
           ),

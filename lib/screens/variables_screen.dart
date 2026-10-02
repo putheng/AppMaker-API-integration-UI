@@ -11,39 +11,25 @@ import '../widgets/common/fields.dart';
 import '../widgets/common/panel.dart';
 import '../widgets/common/value_builder.dart';
 
-class VariablesScreen extends ConsumerStatefulWidget {
+class VariablesScreen extends ConsumerWidget {
   const VariablesScreen({super.key});
 
   @override
-  ConsumerState<VariablesScreen> createState() => _VariablesScreenState();
-}
-
-class _VariablesScreenState extends ConsumerState<VariablesScreen> {
-  String? _selectedId;
-
-  @override
-  void initState() {
-    super.initState();
-    final variables = ref.read(variablesProvider);
-    _selectedId = variables.isEmpty ? null : variables.first.id;
-  }
-
-  void _addVariable() {
-    final id = newId('var');
-    final variable = AppVariable(
-      id: id,
-      name: 'newVariable',
-      type: VariableType.string,
-      initialValue: '',
-    );
-    ref.read(variablesProvider.notifier).add(variable);
-    setState(() => _selectedId = id);
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final variables = ref.watch(variablesProvider);
-    final selected = variables.byId(_selectedId);
+    final selected = variables.byId(ref.watch(selectedVariableIdProvider));
+
+    void addVariable() {
+      final id = newId('var');
+      ref.read(variablesProvider.notifier).add(
+            AppVariable(
+              id: id,
+              name: 'newVariable',
+              type: VariableType.string,
+            ),
+          );
+      ref.read(selectedVariableIdProvider.notifier).select(id);
+    }
 
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.xl),
@@ -55,7 +41,7 @@ class _VariablesScreenState extends ConsumerState<VariablesScreen> {
             subtitle:
                 'Reusable variables that APIs write to and widgets read from.',
             icon: Icons.data_object_outlined,
-            onAdd: _addVariable,
+            onAdd: addVariable,
             addLabel: 'New variable',
           ),
           const SizedBox(height: AppSpacing.lg),
@@ -71,11 +57,12 @@ class _VariablesScreenState extends ConsumerState<VariablesScreen> {
                         const SizedBox(height: AppSpacing.sm),
                     itemBuilder: (context, index) {
                       final variable = variables[index];
-                      return _VariableTile(
-                        variable: variable,
-                        selected: variable.id == _selectedId,
-                        onTap: () =>
-                            setState(() => _selectedId = variable.id),
+                      return ProviderScope(
+                        key: ValueKey(variable.id),
+                        overrides: [
+                          currentVariableProvider.overrideWithValue(variable),
+                        ],
+                        child: const VariableTile(),
                       );
                     },
                   ),
@@ -92,19 +79,6 @@ class _VariablesScreenState extends ConsumerState<VariablesScreen> {
                       : _VariableEditor(
                           key: ValueKey(selected.id),
                           variable: selected,
-                          onChanged: (updated) => ref
-                              .read(variablesProvider.notifier)
-                              .updateVariable(updated),
-                          onDelete: () {
-                            ref
-                                .read(variablesProvider.notifier)
-                                .remove(selected.id);
-                            final remaining = ref.read(variablesProvider);
-                            setState(() {
-                              _selectedId =
-                                  remaining.isEmpty ? null : remaining.first.id;
-                            });
-                          },
                         ),
                 ),
               ],
@@ -116,24 +90,24 @@ class _VariablesScreenState extends ConsumerState<VariablesScreen> {
   }
 }
 
-class _VariableTile extends StatelessWidget {
-  const _VariableTile({
-    required this.variable,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final AppVariable variable;
-  final bool selected;
-  final VoidCallback onTap;
+/// A single variable row. Reads its variable from the overridden
+/// [currentVariableProvider] and its selection from [selectedVariableIdProvider].
+class VariableTile extends ConsumerWidget {
+  const VariableTile({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final variable = ref.watch(currentVariableProvider);
+    final selected = ref.watch(
+      selectedVariableIdProvider.select((id) => id == variable.id),
+    );
+
     return Material(
       color: selected ? AppColors.surfaceHover : AppColors.surface,
       borderRadius: AppRadius.lgAll,
       child: InkWell(
-        onTap: onTap,
+        onTap: () =>
+            ref.read(selectedVariableIdProvider.notifier).select(variable.id),
         borderRadius: AppRadius.lgAll,
         child: Container(
           padding: const EdgeInsets.all(AppSpacing.md),
@@ -143,25 +117,20 @@ class _VariableTile extends StatelessWidget {
               color: selected ? AppColors.primary : AppColors.border,
             ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      variable.name,
-                      style: AppTypography.titleSmall.copyWith(
-                        fontFamily: 'SF Mono',
-                      ),
-                    ),
+              Expanded(
+                child: Text(
+                  variable.name,
+                  style: AppTypography.titleSmall.copyWith(
+                    fontFamily: 'SF Mono',
                   ),
-                  TypeBadge(
-                    variable.type,
-                    elementType: variable.elementType,
-                    dense: true,
-                  ),
-                ],
+                ),
+              ),
+              TypeBadge(
+                variable.type,
+                elementType: variable.elementType,
+                dense: true,
               ),
             ],
           ),
@@ -171,23 +140,16 @@ class _VariableTile extends StatelessWidget {
   }
 }
 
-class _VariableEditor extends StatefulWidget {
-  const _VariableEditor({
-    super.key,
-    required this.variable,
-    required this.onChanged,
-    required this.onDelete,
-  });
+class _VariableEditor extends ConsumerStatefulWidget {
+  const _VariableEditor({super.key, required this.variable});
 
   final AppVariable variable;
-  final ValueChanged<AppVariable> onChanged;
-  final VoidCallback onDelete;
 
   @override
-  State<_VariableEditor> createState() => _VariableEditorState();
+  ConsumerState<_VariableEditor> createState() => _VariableEditorState();
 }
 
-class _VariableEditorState extends State<_VariableEditor> {
+class _VariableEditorState extends ConsumerState<_VariableEditor> {
   late final TextEditingController _name;
   late final TextEditingController _initial;
   late final TextEditingController _description;
@@ -216,16 +178,24 @@ class _VariableEditorState extends State<_VariableEditor> {
     InitialValueMode? valueMode,
     String? description,
   }) {
-    widget.onChanged(
-      widget.variable.copyWith(
-        name: name,
-        type: type,
-        elementType: elementType,
-        initialValue: initial,
-        valueMode: valueMode,
-        description: description,
-      ),
-    );
+    ref.read(variablesProvider.notifier).updateVariable(
+          widget.variable.copyWith(
+            name: name,
+            type: type,
+            elementType: elementType,
+            initialValue: initial,
+            valueMode: valueMode,
+            description: description,
+          ),
+        );
+  }
+
+  void _delete() {
+    ref.read(variablesProvider.notifier).remove(widget.variable.id);
+    final remaining = ref.read(variablesProvider);
+    ref
+        .read(selectedVariableIdProvider.notifier)
+        .select(remaining.isEmpty ? null : remaining.first.id);
   }
 
   @override
@@ -243,7 +213,7 @@ class _VariableEditorState extends State<_VariableEditor> {
                 Text('Edit variable', style: AppTypography.titleLarge),
                 const Spacer(),
                 TextButton.icon(
-                  onPressed: widget.onDelete,
+                  onPressed: _delete,
                   icon: const Icon(Icons.delete_outline, size: 16),
                   label: const Text('Delete'),
                   style: TextButton.styleFrom(foregroundColor: AppColors.error),

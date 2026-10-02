@@ -30,6 +30,25 @@ final variablesProvider =
       VariablesNotifier.new,
     );
 
+/// The variable currently rendered by a list row. Overridden per row with
+/// `ProviderScope(overrides: [currentVariableProvider.overrideWithValue(v)])`.
+final currentVariableProvider = Provider<AppVariable>((ref) {
+  throw UnimplementedError('currentVariableProvider must be overridden');
+});
+
+/// The id of the variable selected in the variables screen.
+class SelectedVariableNotifier extends Notifier<String?> {
+  @override
+  String? build() => seedVariables.isEmpty ? null : seedVariables.first.id;
+
+  void select(String? id) => state = id;
+}
+
+final selectedVariableIdProvider =
+    NotifierProvider<SelectedVariableNotifier, String?>(
+      SelectedVariableNotifier.new,
+    );
+
 extension VariableLookup on List<AppVariable> {
   AppVariable? byId(String? id) {
     if (id == null) return null;

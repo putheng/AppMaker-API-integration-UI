@@ -42,6 +42,12 @@ final selectedFlowProvider = NotifierProvider<SelectedFlowNotifier, String?>(
   SelectedFlowNotifier.new,
 );
 
+/// The action flow currently rendered by a list row. Overridden per row with
+/// `ProviderScope(overrides: [currentFlowProvider.overrideWithValue(flow)])`.
+final currentFlowProvider = Provider<ActionFlow>((ref) {
+  throw UnimplementedError('currentFlowProvider must be overridden');
+});
+
 extension FlowLookup on List<ActionFlow> {
   ActionFlow? byId(String? id) {
     if (id == null) return null;

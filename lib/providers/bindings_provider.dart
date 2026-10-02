@@ -31,6 +31,19 @@ final bindingsProvider =
       BindingsNotifier.new,
     );
 
+/// The id of the binding selected in the bindings screen.
+class SelectedBindingNotifier extends Notifier<String?> {
+  @override
+  String? build() => seedBindings.isEmpty ? null : seedBindings.first.id;
+
+  void select(String? id) => state = id;
+}
+
+final selectedBindingIdProvider =
+    NotifierProvider<SelectedBindingNotifier, String?>(
+      SelectedBindingNotifier.new,
+    );
+
 /// Convenience provider: bindings paired with their resolved variable.
 class ResolvedBinding {
   const ResolvedBinding({required this.binding, this.variableName, this.sample});

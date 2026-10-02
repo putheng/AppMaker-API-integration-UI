@@ -34,7 +34,7 @@ class SelectedApiNotifier extends Notifier<String?> {
   @override
   String? build() => seedApis.first.id;
 
-  void select(String id) => state = id;
+  void select(String? id) => state = id;
 }
 
 final selectedApiProvider =
