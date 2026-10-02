@@ -67,4 +67,30 @@ void main() {
     expect(button.height, AppSpacing.control);
     expect(dropdown.height, AppSpacing.control);
   });
+
+  testWidgets('variable initial value builder adds items and syncs to code', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const ProviderScope(child: AppMakerApp()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Variables').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Add item'), findsOneWidget);
+    await tester.tap(find.text('Add item'));
+    await tester.pumpAndSettle();
+    expect(find.text('Add Text'), findsOneWidget);
+    await tester.tap(find.text('Add Map'));
+    await tester.pumpAndSettle();
+    expect(find.text('[0]'), findsOneWidget);
+
+    await tester.tap(find.text('Code'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('{}'), findsWidgets);
+  });
 }

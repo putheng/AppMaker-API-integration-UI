@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/action_flow.dart';
@@ -55,7 +57,18 @@ class RuntimeNotifier extends Notifier<RuntimeState> {
     if (value == 'true') return true;
     if (value == 'false') return false;
     if (value == 'null' || value.isEmpty) return null;
-    return num.tryParse(value) ?? value;
+
+    final number = num.tryParse(value);
+    if (number != null) return number;
+
+    if (value.startsWith('[') || value.startsWith('{')) {
+      try {
+        return jsonDecode(value);
+      } on FormatException {
+        // Not valid JSON; fall back to the raw string.
+      }
+    }
+    return value;
   }
 
   void reset() {

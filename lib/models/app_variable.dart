@@ -1,8 +1,8 @@
 /// Types of application variables that can be bound to API responses.
 enum VariableType { string, number, boolean, list, map, object, json }
 
-/// Where a variable lives and how long it survives.
-enum VariableScope { global, page, session }
+/// How the initial value is edited: raw code or a structured builder.
+enum InitialValueMode { builder, code }
 
 /// A user-defined application variable, mirroring the README's variable table.
 class AppVariable {
@@ -12,7 +12,7 @@ class AppVariable {
     required this.type,
     this.elementType,
     this.initialValue = '',
-    this.scope = VariableScope.global,
+    this.valueMode = InitialValueMode.builder,
     this.description = '',
   });
 
@@ -24,7 +24,9 @@ class AppVariable {
   /// Flutter types such as `List<String>` or `List<Map<String, dynamic>>`.
   final VariableType? elementType;
   final String initialValue;
-  final VariableScope scope;
+
+  /// Whether the initial value is edited as code or with the visual builder.
+  final InitialValueMode valueMode;
   final String description;
 
   AppVariable copyWith({
@@ -32,7 +34,7 @@ class AppVariable {
     VariableType? type,
     VariableType? elementType,
     String? initialValue,
-    VariableScope? scope,
+    InitialValueMode? valueMode,
     String? description,
   }) {
     return AppVariable(
@@ -41,7 +43,7 @@ class AppVariable {
       type: type ?? this.type,
       elementType: elementType ?? this.elementType,
       initialValue: initialValue ?? this.initialValue,
-      scope: scope ?? this.scope,
+      valueMode: valueMode ?? this.valueMode,
       description: description ?? this.description,
     );
   }

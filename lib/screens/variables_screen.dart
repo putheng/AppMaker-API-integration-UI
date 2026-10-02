@@ -8,6 +8,7 @@ import '../widgets/common/badges.dart';
 import '../widgets/common/empty_state.dart';
 import '../widgets/common/fields.dart';
 import '../widgets/common/panel.dart';
+import '../widgets/common/value_builder.dart';
 
 class VariablesScreen extends ConsumerStatefulWidget {
   const VariablesScreen({super.key});
@@ -161,20 +162,6 @@ class _VariableTile extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: AppSpacing.sm),
-              Row(
-                children: [
-                  ScopeBadge(variable.scope),
-                  const SizedBox(width: AppSpacing.sm),
-                  Flexible(
-                    child: Text(
-                      '= ${variable.initialValue.isEmpty ? '—' : variable.initialValue}',
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.bodySmall,
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),
@@ -224,8 +211,8 @@ class _VariableEditorState extends State<_VariableEditor> {
     String? name,
     VariableType? type,
     VariableType? elementType,
-    VariableScope? scope,
     String? initial,
+    InitialValueMode? valueMode,
     String? description,
   }) {
     widget.onChanged(
@@ -233,8 +220,8 @@ class _VariableEditorState extends State<_VariableEditor> {
         name: name,
         type: type,
         elementType: elementType,
-        scope: scope,
         initialValue: initial,
+        valueMode: valueMode,
         description: description,
       ),
     );
@@ -263,19 +250,21 @@ class _VariableEditorState extends State<_VariableEditor> {
               ],
             ),
             const SizedBox(height: AppSpacing.xl),
-            AppField(
-              label: 'Name',
-              helper: 'Referenced in expressions, e.g. "{{products}}".',
-              child: AppTextField(
-                controller: _name,
-                monospace: true,
-                onChanged: (value) => _push(name: value.trim()),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Expanded(
+                  child: AppField(
+                    label: 'Name',
+                    helper: 'Referenced in expressions, e.g. "{{var.products}}".',
+                    child: AppTextField(
+                      controller: _name,
+                      monospace: true,
+                      onChanged: (value) => _push(name: value.trim()),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.lg),
                 Expanded(
                   child: AppField(
                     label: 'Type',
@@ -308,107 +297,116 @@ class _VariableEditorState extends State<_VariableEditor> {
                     ),
                   ),
                 ),
-                const SizedBox(width: AppSpacing.lg),
-                Expanded(
-                  child: AppField(
-                    label: 'Scope',
-                    child: AppDropdown<VariableScope>(
-                      value: variable.scope,
-                      items: [
-                        for (final scope in VariableScope.values)
-                          DropdownMenuItem(
-                            value: scope,
-                            child: Text(scope.name),
-                          ),
-                      ],
-                      onChanged: (scope) {
-                        if (scope == null) return;
-                        _push(scope: scope);
-                      },
+                if (variable.type == VariableType.list) ...[
+                  const SizedBox(width: AppSpacing.lg),
+                  Expanded(
+                    child: AppField(
+                      label: 'Element type',
+                      child: AppDropdown<VariableType>(
+                        value: variable.elementType ?? VariableType.string,
+                        items: [
+                          for (final element in listElementTypes)
+                            DropdownMenuItem(
+                              value: element,
+                              child: Text(
+                                element == VariableType.map
+                                    ? 'Map<String, dynamic>'
+                                    : variableTypeLabel(element),
+                              ),
+                            ),
+                        ],
+                        onChanged: (element) {
+                          if (element == null) return;
+                          _push(elementType: element);
+                        },
+                      ),
                     ),
                   ),
+                ] else if (variable.type == VariableType.map) ...[
+                  const SizedBox(width: AppSpacing.lg),
+                  Expanded(
+                    child: AppField(
+                      label: 'Value type',
+                      child: Container(
+                        height: AppSpacing.control,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.md,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.background,
+                          borderRadius: AppRadius.mdAll,
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.lock_outline,
+                              size: 15,
+                              color: AppColors.textTertiary,
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                            Text(
+                              'Map<String, dynamic>',
+                              style: AppTypography.code,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ] else
+                  const Spacer(),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Initial value',
+                    style: AppTypography.labelMedium,
+                  ),
+                ),
+                SegmentedButton<InitialValueMode>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(
+                      value: InitialValueMode.builder,
+                      label: Text('Builder'),
+                      icon: Icon(Icons.account_tree_outlined, size: 15),
+                    ),
+                    ButtonSegment(
+                      value: InitialValueMode.code,
+                      label: Text('Code'),
+                      icon: Icon(Icons.code, size: 15),
+                    ),
+                  ],
+                  selected: {variable.valueMode},
+                  onSelectionChanged: (selection) =>
+                      _push(valueMode: selection.first),
                 ),
               ],
             ),
-            if (variable.type == VariableType.list) ...[
-              const SizedBox(height: AppSpacing.lg),
-              AppField(
-                label: 'Element type',
-                helper: 'Produces a strict Flutter type, e.g. List<String>.',
-                child: AppDropdown<VariableType>(
-                  value: variable.elementType ?? VariableType.string,
-                  items: [
-                    for (final element in listElementTypes)
-                      DropdownMenuItem(
-                        value: element,
-                        child: Text(
-                          element == VariableType.map
-                              ? 'Map<String, dynamic>'
-                              : variableTypeLabel(element),
-                        ),
-                      ),
-                  ],
-                  onChanged: (element) {
-                    if (element == null) return;
-                    _push(elementType: element);
-                  },
-                ),
-              ),
-            ],
-            if (variable.type == VariableType.map) ...[
-              const SizedBox(height: AppSpacing.lg),
-              AppField(
-                label: 'Value type',
-                helper: 'Maps are always keyed by String in generated code.',
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md,
-                    vertical: AppSpacing.md,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.background,
-                    borderRadius: AppRadius.mdAll,
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.lock_outline,
-                        size: 15,
-                        color: AppColors.textTertiary,
-                      ),
-                      const SizedBox(width: AppSpacing.sm),
-                      Text(
-                        'Map<String, dynamic>',
-                        style: AppTypography.code,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-            const SizedBox(height: AppSpacing.lg),
-            AppField(
-              label: 'Resulting type',
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: TypeBadge(
-                  variable.type,
-                  elementType: variable.elementType,
-                ),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            AppField(
-              label: 'Initial value',
-              child: AppTextField(
+            const SizedBox(height: AppSpacing.sm),
+            if (variable.valueMode == InitialValueMode.code)
+              AppTextField(
                 controller: _initial,
                 monospace: true,
                 minLines: 3,
                 maxLines: 6,
                 onChanged: (value) => _push(initial: value),
+              )
+            else
+              ValueBuilder(
+                key: ValueKey(
+                  'builder_${variable.id}_${variable.type.name}_${variable.elementType?.name}',
+                ),
+                variable: variable,
+                onChanged: (value) {
+                  _initial.text = value;
+                  _push(initial: value);
+                },
               ),
-            ),
             const SizedBox(height: AppSpacing.lg),
             AppField(
               label: 'Description',

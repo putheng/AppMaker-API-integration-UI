@@ -89,7 +89,7 @@ Color fieldKindColor(FieldKind kind) => switch (kind) {
   FieldKind.nullValue => _nullColor,
 };
 
-/// Small monospace-ish pill used for HTTP methods, types and scopes.
+/// Small monospace-ish pill used for HTTP methods and types.
 class TagChip extends StatelessWidget {
   const TagChip({
     super.key,
@@ -170,19 +170,3 @@ class TypeBadge extends StatelessWidget {
   }
 }
 
-class ScopeBadge extends StatelessWidget {
-  const ScopeBadge(this.scope, {super.key, this.dense = true});
-
-  final VariableScope scope;
-  final bool dense;
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, color) = switch (scope) {
-      VariableScope.global => ('global', AppColors.primary),
-      VariableScope.page => ('page', AppColors.info),
-      VariableScope.session => ('session', AppColors.warning),
-    };
-    return TagChip(label: label, color: color, dense: dense);
-  }
-}

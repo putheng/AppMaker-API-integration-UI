@@ -408,7 +408,7 @@ API
 Variable
  ├── name
  ├── type
- └── scope
+ └── initial
 
 Action
  ├── trigger

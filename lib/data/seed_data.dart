@@ -73,28 +73,24 @@ const List<AppVariable> seedVariables = <AppVariable>[
     name: 'email',
     type: VariableType.string,
     initialValue: '',
-    scope: VariableScope.page,
   ),
   AppVariable(
     id: 'var_password',
     name: 'password',
     type: VariableType.string,
     initialValue: '',
-    scope: VariableScope.page,
   ),
   AppVariable(
     id: 'var_token',
     name: 'authToken',
     type: VariableType.string,
     initialValue: '',
-    scope: VariableScope.session,
   ),
   AppVariable(
     id: 'var_user',
     name: 'currentUser',
     type: VariableType.object,
     initialValue: 'null',
-    scope: VariableScope.session,
     description: 'User object returned by Login',
   ),
 ];

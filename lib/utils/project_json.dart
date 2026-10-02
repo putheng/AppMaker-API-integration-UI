@@ -69,7 +69,6 @@ Map<String, dynamic> _variableToJson(AppVariable variable) {
     'type': variable.type.name,
     if (variable.type == VariableType.list)
       'elementType': (variable.elementType ?? VariableType.string).name,
-    'scope': variable.scope.name,
     'initial': variable.initialValue,
   };
 }
